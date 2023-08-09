@@ -2,6 +2,15 @@ parameters:
   signOutput: false
 
 steps:
+
+  - template: MUX-InstallDotNetSDK-Steps.yml
+
+  - template: MUX-InstallWindowsSDK-Steps.yml
+
+  - template: MUX-InstallNuget-Steps.yml
+
+  - template: MUX-RestorePgo-Steps.yml
+
   - template: MUX-BuildProject-Steps.yml
     parameters:
       solutionPath: MUXControls.sln
@@ -27,7 +36,7 @@ steps:
       vsVersion: 16.0
       platform: '$(buildPlatform)'
       configuration: '$(buildConfiguration)'
-      msbuildArgs: '/restore /p:UseInsiderSDK=$(UseInsiderSDK) /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Never /p:AppxSymbolPackageEnabled=false /binaryLogger:$(Build.SourcesDirectory)/MUXExperimental.sln.$(buildPlatform).$(buildConfiguration).binlog /p:MUXVersionBuild=$(builddate_yymm) /p:MUXVersionRevision=$(builddate_dd)$(buildrevision) /p:VCToolsInstallDir="$(VCToolsInstallDir)\" /p:PGOBuildMode=$(PGOBuildMode)'
+      msbuildArgs: '/restore /p:UseInsiderSDK=$(UseInsiderSDK) /p:AppxPackageDir="$(appxPackageDir)" /p:AppxBundle=Never /p:AppxSymbolPackageEnabled=false /binaryLogger:$(Build.SourcesDirectory)/MUXExperimental.sln.$(buildPlatform).$(buildConfiguration).binlog /p:MUXVersionBuild=$(builddate_yymm) /p:MUXVersionRevision=$(builddate_dd)$(buildrevision) /p:VCToolsInstallDir="$(VCToolsInstallDir)\" /p:VCToolsRedistDir="$(VCToolsRedistDir)\"'
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish MUXExperimental.sln binlog'

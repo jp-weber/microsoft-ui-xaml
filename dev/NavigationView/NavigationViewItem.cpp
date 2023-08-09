@@ -7,6 +7,7 @@
 #include "NavigationView.h"
 #include "NavigationViewItem.h"
 #include "NavigationViewItemAutomationPeer.h"
+#include "StackLayout.h"
 #include "Utils.h"
 
 static constexpr wstring_view c_navigationViewItemPresenterName = L"NavigationViewItemPresenter"sv;
@@ -155,6 +156,12 @@ void NavigationViewItem::LoadMenuItemsHost()
         if (auto repeater = GetTemplateChildT<winrt::ItemsRepeater>(c_repeater, *this))
         {
             m_repeater.set(repeater);
+
+            if (auto stackLayout = repeater.Layout().try_as<winrt::StackLayout>())
+            {
+                auto stackLayoutImpl = winrt::get_self<StackLayout>(stackLayout);
+                stackLayoutImpl->DisableVirtualization(true);
+            }
 
             // Primary element setup happens in NavigationView
             m_repeaterElementPreparedRevoker = repeater.ElementPrepared(winrt::auto_revoke, { nvImpl,  &NavigationView::OnRepeaterElementPrepared });
@@ -323,6 +330,7 @@ void NavigationViewItem::OnInfoBadgePropertyChanged(const winrt::DependencyPrope
 void NavigationViewItem::OnMenuItemsVectorChanged(const winrt::Collections::IObservableVector<winrt::IInspectable>& sender, const winrt::Collections::IVectorChangedEventArgs& args)
 {
     LoadElementsForDisplayingChildren();
+    UpdateRepeaterItemsSource();
 }
 
 void NavigationViewItem::OnMenuItemsPropertyChanged(const winrt::DependencyPropertyChangedEventArgs& args)
@@ -840,7 +848,7 @@ void NavigationViewItem::PropagateDepthToChildren(int depth)
 {
     if (auto const repeater = m_repeater.get())
     {
-        auto itemsCount = repeater.ItemsSourceView().Count();
+        const auto itemsCount = repeater.ItemsSourceView().Count();
         for (int index = 0; index < itemsCount; index++)
         {
             if (auto const element = repeater.TryGetElement(index))
@@ -926,7 +934,7 @@ void NavigationViewItem::ResetTrackedPointerId()
 // Returns True when the provided pointer Id does not match the currently tracked Id.
 bool NavigationViewItem::IgnorePointerId(const winrt::PointerRoutedEventArgs& args)
 {
-    uint32_t pointerId = args.Pointer().PointerId();
+    const uint32_t pointerId = args.Pointer().PointerId();
 
     if (m_trackedPointerId == 0)
     {
@@ -1070,7 +1078,8 @@ void NavigationViewItem::ProcessPointerCanceled(const winrt::PointerRoutedEventA
     // What this flag tracks is complicated because of the NavigationView sub items and the m_capturedPointers that are being tracked..
     // We do this check because PointerCaptureLost can sometimes take the place of PointerReleased events.
     // In these cases we need to test if the pointer is over the item to maintain the proper state.
-    if (IsOutOfControlBounds(args.GetCurrentPoint(*this).Position()))
+    // In the case of touch input, we want to cancel anyway since there will be no pointer exited due to the pointer being cancelled.
+    if (IsOutOfControlBounds(args.GetCurrentPoint(*this).Position()) || args.Pointer().PointerDeviceType() == winrt::PointerDeviceType::Touch)
     {
         m_isPointerOver = false;
     }

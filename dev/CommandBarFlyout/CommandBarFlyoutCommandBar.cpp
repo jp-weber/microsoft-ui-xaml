@@ -403,17 +403,23 @@ bool CommandBarFlyoutCommandBar::HasCloseAnimation()
 }
 
 void CommandBarFlyoutCommandBar::PlayCloseAnimation(
+    const winrt::weak_ref<winrt::CommandBarFlyout>& weakCommandBarFlyout,
     std::function<void()> onCompleteFunc)
 {
+    COMMANDBARFLYOUT_TRACE_INFO(*this, TRACE_MSG_METH, METH_NAME, this);
+
     if (auto closingStoryboard = m_closingStoryboard.get())
     {
         if (closingStoryboard.GetCurrentState() != winrt::ClockState::Active)
         {
             m_closingStoryboardCompletedCallbackRevoker = closingStoryboard.Completed(winrt::auto_revoke,
             {
-                [this, onCompleteFunc](auto const&, auto const&)
+                [this, weakCommandBarFlyout, onCompleteFunc](auto const&, auto const&)
                 {
-                    onCompleteFunc();
+                    if (weakCommandBarFlyout.get())
+                    {
+                        onCompleteFunc();
+                    }
                 }
             });
 
@@ -550,7 +556,7 @@ void CommandBarFlyoutCommandBar::UpdateVisualState(
 
         // If there isn't enough space to display the overflow below the command bar,
         // and if there is enough space above, then we'll display it above instead.
-        if (auto window = winrt::Window::Current() && !hadActualPlacement && m_secondaryItemsRoot)
+        if (const auto window = winrt::Window::Current() && !hadActualPlacement && m_secondaryItemsRoot)
         {
             double availableHeight = -1;
             const auto controlBounds = TransformToVisual(nullptr).TransformBounds({ 0, 0, static_cast<float>(ActualWidth()), static_cast<float>(ActualHeight()) });
@@ -589,7 +595,7 @@ void CommandBarFlyoutCommandBar::UpdateVisualState(
         winrt::VisualStateManager::GoToState(*this, shouldExpandUp ? L"ExpandedUp" : L"ExpandedDown", useTransitions && !isForSizeChange);
 
         // Union of AvailableCommandsStates and ExpansionStates
-        bool hasPrimaryCommands = (PrimaryCommands().Size() != 0);
+        const bool hasPrimaryCommands = (PrimaryCommands().Size() != 0);
         if (hasPrimaryCommands)
         {
             if (shouldExpandUp)

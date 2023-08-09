@@ -993,7 +993,7 @@ void NavigationView::RaiseItemInvokedForNavigationViewItem(const winrt::Navigati
     if (auto itemsSourceView = parentIR.ItemsSourceView())
     {
         auto inspectingDataSource = static_cast<InspectingDataSource*>(winrt::get_self<ItemsSourceView>(itemsSourceView));
-        auto itemIndex = parentIR.GetElementIndex(nvi);
+        const auto itemIndex = parentIR.GetElementIndex(nvi);
 
         // Check that index is NOT -1, meaning it is actually realized
         if (itemIndex != -1)
@@ -1005,7 +1005,7 @@ void NavigationView::RaiseItemInvokedForNavigationViewItem(const winrt::Navigati
 
     // Determine the recommeded transition direction.
     // Any transitions other than `Default` only apply in top nav scenarios.
-    auto recommendedDirection = [this, prevItem, nvi, parentIR]()
+    const auto recommendedDirection = [this, prevItem, nvi, parentIR]()
     {
         if (IsTopNavigationView() && nvi.SelectsOnInvoked())
         {
@@ -1209,7 +1209,7 @@ void NavigationView::OnRepeaterElementPrepared(const winrt::ItemsRepeater& ir, c
         nvibImpl->IsTopLevelItem(IsTopLevelItem(nvib));
 
         // Visual state info propagation
-        auto position = [this, ir]()
+        const auto position = [this, ir]()
         {
             if (IsTopNavigationView())
             {
@@ -1386,7 +1386,7 @@ void NavigationView::OnLayoutUpdated(const winrt::IInspectable& sender, const wi
 void NavigationView::OnSizeChanged(winrt::IInspectable const& /*sender*/, winrt::SizeChangedEventArgs const& args)
 {
     const auto width = args.NewSize().Width;
-    UpdateOpenPaneWidth(width);
+    UpdateOpenPaneLength(width);
     UpdateAdaptiveLayout(width);
     UpdateTitleBarPadding();
     UpdateBackAndCloseButtonsVisibility();
@@ -1398,14 +1398,14 @@ void NavigationView::OnItemsContainerSizeChanged(const winrt::IInspectable& send
     UpdatePaneLayout();
 }
 
-void NavigationView::UpdateOpenPaneWidth(double width)
+void NavigationView::UpdateOpenPaneLength(double width)
 {
     if (!IsTopNavigationView() && m_rootSplitView)
     {
-        m_openPaneWidth = std::max(0.0, std::min(width, OpenPaneLength()));
+        m_OpenPaneLength = std::max(0.0, std::min(width, OpenPaneLength()));
 
         const auto templateSettings = GetTemplateSettings();
-        templateSettings->OpenPaneWidth(m_openPaneWidth);
+        templateSettings->OpenPaneLength(m_OpenPaneLength);
     }
 }
 
@@ -2350,7 +2350,7 @@ void NavigationView::ChangeSelection(const winrt::IInspectable& prevItem, const 
         // otherwise if prevItem is on left side of nextActualItem, transition is from left
         //           if prevItem is on right side of nextActualItem, transition is from right
         // click on Settings item is considered Default
-        auto recommendedDirection = [this, prevItem, nextItem]()
+        const auto recommendedDirection = [this, prevItem, nextItem]()
         {
             if (IsTopNavigationView())
             {
@@ -2943,7 +2943,7 @@ void NavigationView::OnKeyDown(winrt::KeyRoutedEventArgs const& e)
         m_TabKeyPrecedesFocusChange = true;
         break;
     case winrt::VirtualKey::Left:
-        auto altState = winrt::CoreWindow::GetForCurrentThread().GetKeyState(winrt::VirtualKey::Menu);
+        const auto altState = winrt::CoreWindow::GetForCurrentThread().GetKeyState(winrt::VirtualKey::Menu);
         const bool isAltPressed = (altState & winrt::CoreVirtualKeyStates::Down) == winrt::CoreVirtualKeyStates::Down;
 
         if (isAltPressed && IsPaneOpen() && IsLightDismissible())
@@ -4096,7 +4096,7 @@ void NavigationView::OnPropertyChanged(const winrt::DependencyPropertyChangedEve
     }
     else if (property == s_OpenPaneLengthProperty)
     {
-        UpdateOpenPaneWidth(ActualWidth());
+        UpdateOpenPaneLength(ActualWidth());
     }
 }
 
@@ -4294,21 +4294,30 @@ void NavigationView::UpdatePaneDisplayMode(winrt::NavigationViewPaneDisplayMode 
     // See #1702 and #1787
     if (!IsTopNavigationView())
     {
-        if (IsPaneOpen())
+        // In rare cases it is possible to end up in a state where two calls to OnPropertyChanged for PaneDisplayMode can end up on the stack
+        // Calls above to UpdatePaneDisplayMode() can result in further property updates.
+        // As a result of this reentrancy, we can end up with an incorrect result for IsPaneOpen as the later OnPropertyChanged for PaneDisplayMode
+        // will complete during the OnPropertyChanged of the earlier one. 
+        // To avoid this, we only call OpenPane()/ClosePane() if PaneDisplayMode has not changed.
+        if (newDisplayMode == PaneDisplayMode())
         {
-            if (newDisplayMode == winrt::NavigationViewPaneDisplayMode::LeftMinimal)
+            if (IsPaneOpen())
             {
-                ClosePane();
+                if (newDisplayMode == winrt::NavigationViewPaneDisplayMode::LeftMinimal)
+                {
+                    ClosePane();
+                }
+            }
+            else
+            {
+                if (oldDisplayMode == winrt::NavigationViewPaneDisplayMode::LeftMinimal
+                    && newDisplayMode == winrt::NavigationViewPaneDisplayMode::Left)
+                {
+                    OpenPane();
+                }
             }
         }
-        else
-        {
-            if (oldDisplayMode == winrt::NavigationViewPaneDisplayMode::LeftMinimal
-                && newDisplayMode == winrt::NavigationViewPaneDisplayMode::Left)
-            {
-                OpenPane();
-            }
-        }
+        
     }
 }
 
@@ -4456,13 +4465,13 @@ void NavigationView::UpdatePaneToggleSize()
             {
                 if (splitView.DisplayMode() == winrt::SplitViewDisplayMode::Overlay && IsPaneOpen())
                 {
-                    width = m_openPaneWidth;
-                    togglePaneButtonWidth = m_openPaneWidth - ((ShouldShowBackButton() || ShouldShowCloseButton()) ? c_backButtonWidth : 0);
+                    width = m_OpenPaneLength;
+                    togglePaneButtonWidth = m_OpenPaneLength - ((ShouldShowBackButton() || ShouldShowCloseButton()) ? c_backButtonWidth : 0);
                 }
                 else if (!(splitView.DisplayMode() == winrt::SplitViewDisplayMode::Overlay && !IsPaneOpen()))
                 {
-                    width = m_openPaneWidth;
-                    togglePaneButtonWidth = m_openPaneWidth;
+                    width = m_OpenPaneLength;
+                    togglePaneButtonWidth = m_OpenPaneLength;
                 }
             }
 
@@ -4936,7 +4945,7 @@ void NavigationView::UpdatePaneShadow()
 
         // Shadow will get clipped if casting on the splitView.Content directly
         // Creating a canvas with negative margins as receiver to allow shadow to be drawn outside the content grid 
-        winrt::Thickness shadowReceiverMargin = { 0, -c_paneElevationTranslationZ, -c_paneElevationTranslationZ, -c_paneElevationTranslationZ };
+        const winrt::Thickness shadowReceiverMargin = { 0, -c_paneElevationTranslationZ, -c_paneElevationTranslationZ, -c_paneElevationTranslationZ };
 
         // Ensuring shadow is aligned to the left
         shadowReceiver.HorizontalAlignment(winrt::HorizontalAlignment::Left);
@@ -4944,11 +4953,11 @@ void NavigationView::UpdatePaneShadow()
         // Ensure shadow is as wide as the pane when it is open
         if (DisplayMode() == winrt::NavigationViewDisplayMode::Compact)
         {
-            shadowReceiver.Width(m_openPaneWidth);
+            shadowReceiver.Width(m_OpenPaneLength);
         }
         else
         {
-            shadowReceiver.Width(m_openPaneWidth - shadowReceiverMargin.Right);
+            shadowReceiver.Width(m_OpenPaneLength - shadowReceiverMargin.Right);
         }
         shadowReceiver.Margin(shadowReceiverMargin);
     }
